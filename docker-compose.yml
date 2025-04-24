@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  label-studio:
+    image: heartexlabs/label-studio:latest
+    container_name: label-studio
+    ports:
+      - "8080:8080"
+    environment:
+      - LABEL_STUDIO_HOST=label-studio
+      - LABEL_STUDIO_PORT=8080
+      - LABEL_STUDIO_USERNAME=admin@example.com
+      - LABEL_STUDIO_PASSWORD=admin
+    volumes:
+      - ./label-studio-data:/label-studio/data
+    networks:
+      - active-learning-network
+    restart: unless-stopped
+
+  yolo-service:
+    build: 
+      context: ./yolo-service
+      dockerfile: Dockerfile
+    container_name: yolo-service
+    volumes:
+      - ./yolo-service:/app
+      - ./shared-data:/app/shared-data
+    environment:
+      - LABEL_STUDIO_URL=http://label-studio:8080
+      - LABEL_STUDIO_API_KEY=${LABEL_STUDIO_API_KEY}
+      - PROJECT_ID=${PROJECT_ID}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+    depends_on:
+      - label-studio
+    networks:
+      - active-learning-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+networks:
+  active-learning-network:
+    driver: bridge

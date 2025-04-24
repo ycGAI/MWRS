@@ -1,0 +1,6 @@
+# Label Studio配置
+LABEL_STUDIO_API_KEY=your_api_key_here
+PROJECT_ID=1
+
+# GPU配置（如果不使用GPU，可以设置为-1）
+CUDA_VISIBLE_DEVICES=0
