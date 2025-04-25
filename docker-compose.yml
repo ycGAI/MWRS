@@ -8,9 +8,9 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - LABEL_STUDIO_HOST=http://localhost:8080  # 明确包含端口号
+      - LABEL_STUDIO_HOST=http://localhost:8080 
       - LABEL_STUDIO_PORT=8080
-      - LABEL_STUDIO_DOMAIN=localhost:8080       # 添加域名配置
+      - LABEL_STUDIO_DOMAIN=localhost:8080       
       - LABEL_STUDIO_USERNAME=admin@example.com
       - LABEL_STUDIO_PASSWORD=admin
       - LABEL_STUDIO_DATA_DIR=/label-studio/data
@@ -37,7 +37,7 @@ services:
       - ./yolo-service:/app
       - ./shared-data:/app/shared-data
     environment:
-      - LABEL_STUDIO_URL=http://label-studio:8080 # 使用容器名称访问
+      - LABEL_STUDIO_URL=http://label-studio:8080 
       - LABEL_STUDIO_USERNAME=admin@example.com
       - LABEL_STUDIO_PASSWORD=admin
       - LABEL_STUDIO_API_KEY=${LABEL_STUDIO_API_KEY}
