@@ -12,48 +12,46 @@ import glob
 from pathlib import Path
 import time
 
-# 假设您已经安装了YOLOv5
-# pip install -U ultralytics
 from ultralytics import YOLO
 
-# Label Studio相关
+# Label Studio related
 import label_studio_sdk
 from label_studio_sdk import Client
 
-# 从环境变量获取配置
+# Get configuration from environment variables
 LABEL_STUDIO_URL = os.environ.get("LABEL_STUDIO_URL", "http://label-studio:8080")
 API_KEY = os.environ.get("LABEL_STUDIO_API_KEY", "your_api_key_here")
 PROJECT_ID = int(os.environ.get("PROJECT_ID", 1))
 
-YOLO_MODEL_PATH = "yolov8n.pt"  # 预训练的YOLO模型路径
-CONFIDENCE_THRESHOLD = 0.25  # 检测置信度阈值
-NEW_DATA_DIR = "/app/shared-data/new_images"  # 新数据目录
-OUTPUT_DIR = "/app/shared-data/yolo_predictions"  # YOLO预测结果保存目录
-CORRECTED_DATA_DIR = "/app/shared-data/corrected_data"  # 修正后的数据目录
+YOLO_MODEL_PATH = "yolov8n.pt"  # Path to pretrained YOLO model
+CONFIDENCE_THRESHOLD = 0.25  # Detection confidence threshold
+NEW_DATA_DIR = "/app/shared-data/new_images"  # New data directory
+OUTPUT_DIR = "/app/shared-data/yolo_predictions"  # Directory to save YOLO prediction results
+CORRECTED_DATA_DIR = "/app/shared-data/corrected_data"  # Directory for corrected data
 
-# 确保目录存在
+# Ensure directories exist
 os.makedirs(NEW_DATA_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CORRECTED_DATA_DIR, exist_ok=True)
 
 class YOLOActiveLearning:
     def __init__(self):
-        # 等待Label Studio服务启动
+        # Wait for Label Studio service to start
         self.wait_for_label_studio()
         
         self.model = YOLO(YOLO_MODEL_PATH)
         self.ls_client = Client(url=LABEL_STUDIO_URL, api_key=API_KEY)
         
-        # 确保项目存在
+        # Ensure the project exists
         try:
             self.project = self.ls_client.get_project(PROJECT_ID)
-            print(f"成功连接到项目ID: {PROJECT_ID}")
+            print(f"Successfully connected to project ID: {PROJECT_ID}")
         except Exception as e:
-            print(f"无法获取项目 {PROJECT_ID}, 错误: {e}")
-            print("尝试创建新项目...")
+            print(f"Unable to get project {PROJECT_ID}, error: {e}")
+            print("Trying to create a new project...")
             self.project = self.ls_client.create_project(
                 title="YOLO Active Learning",
-                description="使用YOLO进行主动学习的项目",
+                description="Project using YOLO for active learning",
                 label_config="""
                 <View>
                   <Image name="image" value="$image"/>
@@ -61,71 +59,71 @@ class YOLOActiveLearning:
                     <Label value="person" background="#FF0000"/>
                     <Label value="car" background="#00FF00"/>
                     <Label value="dog" background="#0000FF"/>
-                    <!-- 根据需要添加更多标签 -->
+                    <!-- Add more labels as needed -->
                   </RectangleLabels>
                 </View>
                 """
             )
             PROJECT_ID = self.project.id
-            print(f"创建了新项目，ID: {PROJECT_ID}")
+            print(f"Created a new project, ID: {PROJECT_ID}")
         
-        # 加载类别映射
+        # Load class mapping
         self.class_map = self.model.names
         
-        # 创建Label Studio类别到YOLO类别的映射
+        # Create Label Studio class to YOLO class mapping
         self.create_class_mapping()
     
     def wait_for_label_studio(self, max_retries=30, retry_interval=10):
-        """等待Label Studio服务可用"""
-        print(f"等待Label Studio服务在 {LABEL_STUDIO_URL} 启动...")
+        """Wait for Label Studio service to be available"""
+        print(f"Waiting for Label Studio service to start at {LABEL_STUDIO_URL}...")
         for i in range(max_retries):
             try:
                 response = requests.get(f"{LABEL_STUDIO_URL}/health")
                 if response.status_code == 200:
-                    print("Label Studio服务已启动!")
+                    print("Label Studio service has started!")
                     return True
             except requests.exceptions.ConnectionError:
                 pass
             
-            print(f"重试 {i+1}/{max_retries}...")
+            print(f"Retry {i+1}/{max_retries}...")
             time.sleep(retry_interval)
         
-        print("无法连接到Label Studio服务，请检查配置。")
+        print("Unable to connect to Label Studio service, please check configuration.")
         return False
         
     def create_class_mapping(self):
-        """创建Label Studio类别到YOLO类别的映射"""
-        # 获取Label Studio中的标签
+        """Create Label Studio class to YOLO class mapping"""
+        # Get labels from Label Studio
         ls_labels = self.project.params['label_config']
-        # 解析XML获取标签（简化版，可能需要根据实际标签配置调整）
+        # Parse XML to get labels (simplified version, might need adjustment based on actual label configuration)
         import re
         self.ls_labels = re.findall(r'value="([^"]+)"', ls_labels)
         
-        # 创建Label Studio标签到YOLO类别的映射
+        # Create Label Studio label to YOLO class mapping
         self.ls_to_yolo = {}
         for idx, label in enumerate(self.ls_labels):
             if label in self.class_map.values():
-                # 找到YOLO中对应的类别ID
+                # Find corresponding class ID in YOLO
                 for yolo_id, yolo_label in self.class_map.items():
                     if yolo_label == label:
                         self.ls_to_yolo[label] = yolo_id
             else:
-                # 如果Label Studio中有YOLO没有的类别，可以扩展YOLO类别
-                # 这里假设Label Studio中的类别与YOLO类别一致
+                # If Label Studio has classes not in YOLO, we can extend YOLO classes
+                # Here we assume Label Studio classes match YOLO classes
                 self.ls_to_yolo[label] = idx
         
-        # 创建YOLO类别到Label Studio标签的映射
+        # Create YOLO class to Label Studio label mapping
         self.yolo_to_ls = {v: k for k, v in self.ls_to_yolo.items()}
         
     def predict_batch(self, image_paths):
-        """使用YOLO模型对一批图像进行预测"""
+        """Use YOLO model to predict on a batch of images"""
         results = []
         
-        for img_path in tqdm(image_paths, desc="YOLO预测"):
-            # 运行模型预测
+        for img_path in tqdm(image_paths, desc="YOLO prediction"):
+            # Run model prediction
             result = self.model(img_path, conf=CONFIDENCE_THRESHOLD)
             
-            # 保存预测结果
+            # Save prediction results
             img_name = os.path.basename(img_path)
             results.append({
                 "image_path": img_path,
@@ -136,45 +134,45 @@ class YOLOActiveLearning:
         return results
     
     def convert_to_labelstudio_format(self, results):
-        """将YOLO预测结果转换为Label Studio格式"""
+        """Convert YOLO prediction results to Label Studio format"""
         tasks = []
         
         for result in results:
             img_path = result["image_path"]
             img_name = result["image_name"]
-            prediction = result["predictions"][0]  # 获取第一个预测结果（单张图片）
+            prediction = result["predictions"][0]  # Get the first prediction result (single image)
             
-            # 读取图像获取尺寸
+            # Read image to get dimensions
             img = Image.open(img_path)
             img_width, img_height = img.size
             
-            # 准备标注数据
+            # Prepare annotation data
             annotations = []
             
-            # 如果有预测框
+            # If there are predicted boxes
             if len(prediction.boxes) > 0:
-                boxes = prediction.boxes.xyxy.cpu().numpy()  # 获取边界框坐标
-                cls = prediction.boxes.cls.cpu().numpy()  # 获取类别
-                conf = prediction.boxes.conf.cpu().numpy()  # 获取置信度
+                boxes = prediction.boxes.xyxy.cpu().numpy()  # Get bounding box coordinates
+                cls = prediction.boxes.cls.cpu().numpy()  # Get classes
+                conf = prediction.boxes.conf.cpu().numpy()  # Get confidence scores
                 
                 for i in range(len(boxes)):
                     x1, y1, x2, y2 = boxes[i]
                     class_id = int(cls[i])
                     confidence = float(conf[i])
                     
-                    # 将类别ID转换为Label Studio标签
+                    # Convert class ID to Label Studio label
                     if class_id in self.yolo_to_ls:
                         label = self.yolo_to_ls[class_id]
                     else:
                         label = f"class_{class_id}"
                     
-                    # Label Studio使用的是相对坐标（0-100%）
+                    # Label Studio uses relative coordinates (0-100%)
                     width = (x2 - x1) / img_width * 100
                     height = (y2 - y1) / img_height * 100
                     x = x1 / img_width * 100
                     y = y1 / img_height * 100
                     
-                    # 创建Label Studio格式的标注
+                    # Create Label Studio format annotation
                     annotation = {
                         "id": f"result_{i}",
                         "type": "rectanglelabels",
@@ -195,7 +193,7 @@ class YOLOActiveLearning:
                     
                     annotations.append(annotation)
             
-            # 创建任务
+            # Create task
             with open(img_path, "rb") as image_file:
                 encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
             
@@ -217,95 +215,95 @@ class YOLOActiveLearning:
         return tasks
     
     def upload_to_labelstudio(self, tasks):
-        """将任务上传到Label Studio"""
-        for task in tqdm(tasks, desc="上传到Label Studio"):
+        """Upload tasks to Label Studio"""
+        for task in tqdm(tasks, desc="Uploading to Label Studio"):
             self.project.import_tasks([task])
             
-        print(f"成功上传 {len(tasks)} 个任务到Label Studio")
+        print(f"Successfully uploaded {len(tasks)} tasks to Label Studio")
     
     def export_corrected_data(self):
-        """从Label Studio导出修正后的数据"""
-        # 获取已完成的任务
+        """Export corrected data from Label Studio"""
+        # Get completed tasks
         completed_tasks = self.project.get_tasks(filters={"status": "completed"})
         
         os.makedirs(f"{CORRECTED_DATA_DIR}/images", exist_ok=True)
         os.makedirs(f"{CORRECTED_DATA_DIR}/labels", exist_ok=True)
         
-        for task in tqdm(completed_tasks, desc="导出修正后的数据"):
-            # 获取图像数据
+        for task in tqdm(completed_tasks, desc="Exporting corrected data"):
+            # Get image data
             image_data = task["data"]["image"]
             if image_data.startswith("data:image/"):
-                # 从base64解码图像
+                # Decode image from base64
                 img_format = image_data.split(";")[0].split("/")[1]
                 img_data = base64.b64decode(image_data.split(",")[1])
                 img_name = f"image_{task['id']}.{img_format}"
                 
-                # 保存图像
+                # Save image
                 with open(f"{CORRECTED_DATA_DIR}/images/{img_name}", "wb") as f:
                     f.write(img_data)
                     
-                # 处理标注
+                # Process annotations
                 if "annotations" in task:
-                    annotation = task["annotations"][0]  # 获取最新的标注
+                    annotation = task["annotations"][0]  # Get the latest annotation
                     result = annotation["result"]
                     
-                    # 获取图像尺寸
+                    # Get image dimensions
                     img = Image.open(f"{CORRECTED_DATA_DIR}/images/{img_name}")
                     img_width, img_height = img.size
                     
-                    # 创建YOLO格式的标注文件
+                    # Create YOLO format annotation file
                     label_file = f"{CORRECTED_DATA_DIR}/labels/{os.path.splitext(img_name)[0]}.txt"
                     
                     with open(label_file, "w") as f:
                         for item in result:
                             if item["type"] == "rectanglelabels":
-                                # 获取标签
+                                # Get label
                                 label = item["value"]["rectanglelabels"][0]
                                 
-                                # 转换回YOLO的类别ID
+                                # Convert back to YOLO class ID
                                 if label in self.ls_to_yolo:
                                     class_id = self.ls_to_yolo[label]
                                 else:
-                                    continue  # 跳过不认识的标签
+                                    continue  # Skip unrecognized labels
                                 
-                                # 获取边界框坐标（从百分比转回实际像素）
+                                # Get bounding box coordinates (convert from percentages back to actual pixels)
                                 x = item["value"]["x"] / 100 * img_width
                                 y = item["value"]["y"] / 100 * img_height
                                 width = item["value"]["width"] / 100 * img_width
                                 height = item["value"]["height"] / 100 * img_height
                                 
-                                # 转换为YOLO格式（中心点坐标和宽高，归一化）
+                                # Convert to YOLO format (center point coordinates and width/height, normalized)
                                 x_center = (x + width / 2) / img_width
                                 y_center = (y + height / 2) / img_height
                                 width_norm = width / img_width
                                 height_norm = height / img_height
                                 
-                                # 写入YOLO格式标注
+                                # Write YOLO format annotation
                                 f.write(f"{class_id} {x_center} {y_center} {width_norm} {height_norm}\n")
         
-        print(f"成功导出修正后的数据到 {CORRECTED_DATA_DIR}")
+        print(f"Successfully exported corrected data to {CORRECTED_DATA_DIR}")
         
     def create_dataset_yaml(self):
-        """创建YOLO训练所需的数据集YAML文件"""
+        """Create dataset YAML file needed for YOLO training"""
         dataset_yaml = {
             "path": os.path.abspath(CORRECTED_DATA_DIR),
             "train": "images",
-            "val": "images",  # 简化版，使用相同的图像进行验证
+            "val": "images",  # Simplified version, using the same images for validation
             "names": self.class_map
         }
         
         with open(f"{CORRECTED_DATA_DIR}/dataset.yaml", "w") as f:
             yaml.dump(dataset_yaml, f)
         
-        print(f"成功创建数据集配置文件: {CORRECTED_DATA_DIR}/dataset.yaml")
+        print(f"Successfully created dataset configuration file: {CORRECTED_DATA_DIR}/dataset.yaml")
     
     def fine_tune_model(self, epochs=10, batch_size=16):
-        """使用修正后的数据微调YOLO模型"""
-        # 创建数据集YAML
+        """Fine-tune YOLO model using corrected data"""
+        # Create dataset YAML
         self.create_dataset_yaml()
         
-        # 微调模型
-        print("开始微调YOLO模型...")
+        # Fine-tune model
+        print("Starting YOLO model fine-tuning...")
         self.model.train(
             data=f"{CORRECTED_DATA_DIR}/dataset.yaml",
             epochs=epochs,
@@ -317,86 +315,86 @@ class YOLOActiveLearning:
             name='active_learning_run'
         )
         
-        print("模型微调完成！")
+        print("Model fine-tuning completed!")
         
-        # 更新当前模型
+        # Update current model
         self.model = YOLO('/app/shared-data/yolo_training/active_learning_run/weights/best.pt')
         
         return '/app/shared-data/yolo_training/active_learning_run/weights/best.pt'
     
     def monitor_label_studio(self, check_interval=60):
-        """监控Label Studio中的任务完成情况"""
+        """Monitor task completion status in Label Studio"""
         while True:
-            # 获取任务数量
+            # Get number of tasks
             tasks = self.project.get_tasks()
             total_tasks = len(tasks)
             
             if total_tasks == 0:
-                print("没有任务需要监控。")
+                print("No tasks to monitor.")
                 time.sleep(check_interval)
                 continue
             
-            # 检查已完成的任务
+            # Check completed tasks
             completed_tasks = self.project.get_tasks(filters={"status": "completed"})
             completed_count = len(completed_tasks)
             
-            print(f"Label Studio中的任务状态: {completed_count}/{total_tasks} 已完成")
+            print(f"Label Studio task status: {completed_count}/{total_tasks} completed")
             
-            # 如果所有任务都已完成，开始处理数据
+            # If all tasks are completed, start processing data
             if completed_count == total_tasks and total_tasks > 0:
-                print("所有任务已完成，开始处理数据...")
+                print("All tasks completed, starting data processing...")
                 self.export_corrected_data()
                 new_model_path = self.fine_tune_model(epochs=5)
-                print(f"主动学习循环完成！更新后的模型保存在: {new_model_path}")
+                print(f"Active learning cycle completed! Updated model saved at: {new_model_path}")
                 
-                # 等待新任务
-                print("等待新任务...")
+                # Wait for new tasks
+                print("Waiting for new tasks...")
             
             time.sleep(check_interval)
     
     def run_active_learning_cycle(self, image_paths=None):
-        """运行一个完整的主动学习循环"""
+        """Run a complete active learning cycle"""
         if not image_paths:
-            # 如果没有提供图像路径，尝试从目录中获取
+            # If no image paths provided, try to get them from the directory
             image_paths = glob.glob(f"{NEW_DATA_DIR}/*.jpg") + glob.glob(f"{NEW_DATA_DIR}/*.jpeg") + glob.glob(f"{NEW_DATA_DIR}/*.png")
         
         if not image_paths:
-            print(f"在 {NEW_DATA_DIR} 目录中没有找到图像文件。")
-            print("请将要处理的图像放入共享目录，然后再次运行。")
+            print(f"No image files found in {NEW_DATA_DIR} directory.")
+            print("Please place images to process in the shared directory, then run again.")
             return
         
-        # 1. 使用当前模型进行预测
-        print("第1步：使用YOLO模型进行预测...")
+        # 1. Use current model for prediction
+        print("Step 1: Using YOLO model for prediction...")
         results = self.predict_batch(image_paths)
         
-        # 2. 将预测结果转换为Label Studio格式
-        print("第2步：转换预测结果为Label Studio格式...")
+        # 2. Convert prediction results to Label Studio format
+        print("Step 2: Converting prediction results to Label Studio format...")
         tasks = self.convert_to_labelstudio_format(results)
         
-        # 3. 上传到Label Studio
-        print("第3步：上传任务到Label Studio进行人工修正...")
+        # 3. Upload to Label Studio
+        print("Step 3: Uploading tasks to Label Studio for manual correction...")
         self.upload_to_labelstudio(tasks)
         
-        # 4. 监控Label Studio中任务的完成情况
-        print("第4步：开始监控Label Studio任务...")
+        # 4. Monitor task completion in Label Studio
+        print("Step 4: Starting to monitor Label Studio tasks...")
         self.monitor_label_studio()
 
 
-# 主程序
+# Main program
 if __name__ == "__main__":
-    print("启动YOLO主动学习系统...")
+    print("Starting YOLO active learning system...")
     
-    # 初始化
+    # Initialize
     active_learner = YOLOActiveLearning()
     
-    # 定期检查新图像并处理
+    # Periodically check for new images and process them
     while True:
-        # 获取需要标注的图像
+        # Get images that need annotation
         image_paths = glob.glob(f"{NEW_DATA_DIR}/*.jpg") + glob.glob(f"{NEW_DATA_DIR}/*.jpeg") + glob.glob(f"{NEW_DATA_DIR}/*.png")
         
         if image_paths:
-            print(f"发现 {len(image_paths)} 个新图像文件，开始处理...")
+            print(f"Found {len(image_paths)} new image files, starting processing...")
             active_learner.run_active_learning_cycle(image_paths)
         else:
-            print(f"在 {NEW_DATA_DIR} 目录中没有找到新图像文件。等待中...")
-            time.sleep(60)  # 每分钟检查一次
+            print(f"No new image files found in {NEW_DATA_DIR} directory. Waiting...")
+            time.sleep(60)  # Check once per minute

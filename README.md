@@ -1,43 +1,43 @@
-# YOLO与Label Studio主动学习系统设置指南
+# YOLO and Label Studio Active Learning System Setup Guide
 
-本文档提供了如何设置和使用基于Docker的YOLO与Label Studio主动学习系统的详细说明。
+This document provides detailed instructions on setting up and using a Docker-based active learning system integrating YOLO and Label Studio.
 
-## 系统架构
+## System Architecture
 
-该系统由两个Docker容器组成：
-1. **Label Studio容器**：用于人工标注和修正
-2. **YOLO服务容器**：运行YOLO模型用于预测、训练和主动学习
+The system consists of two Docker containers:
+1. **Label Studio Container**: For manual labeling and correction
+2. **YOLO Service Container**: Runs YOLO model for prediction, training, and active learning
 
-两个容器通过Docker网络进行通信，并通过共享卷来交换数据。
+The containers communicate via Docker networking and exchange data through shared volumes.
 
-## 前提条件
+## Prerequisites
 
-- Docker和Docker Compose已安装
-- NVIDIA容器工具包（如果使用GPU）：[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+- Docker and Docker Compose installed
+- NVIDIA Container Toolkit (for GPU support): [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 
-## 项目结构
+## Project Structure
 
-请按照以下目录结构创建项目文件：
+Create the following directory structure:
 
 ```
 yolo-label-studio-project/
-├── docker-compose.yml          # Docker Compose配置文件
-├── .env                        # 环境变量配置
-├── shared-data/                # 共享数据目录
-│   ├── new_images/             # 存放需要标注的新图像
-│   ├── yolo_predictions/       # 存放YOLO预测结果
-│   ├── corrected_data/         # 存放修正后的数据
-│   └── yolo_training/          # 存放训练结果和模型
-├── label-studio-data/          # Label Studio数据目录
-└── yolo-service/               # YOLO服务目录
-    ├── Dockerfile              # YOLO服务的Dockerfile
-    ├── requirements.txt        # Python依赖列表
-    └── active_learning.py      # 主动学习代码
+├── docker-compose.yml          # Docker Compose configuration
+├── .env                        # Environment variables
+├── shared-data/                # Shared data directory
+│   ├── new_images/             # New images for labeling
+│   ├── yolo_predictions/       # YOLO prediction results
+│   ├── corrected_data/         # Corrected annotation data
+│   └── yolo_training/          # Training results and models
+├── label-studio-data/          # Label Studio data directory
+└── yolo-service/               # YOLO service directory
+    ├── Dockerfile              # YOLO service Dockerfile
+    ├── requirements.txt        # Python dependencies
+    └── active_learning.py      # Active learning code
 ```
 
-## 设置步骤
+## Setup Steps
 
-### 1. 创建目录结构
+### 1. Create Directory Structure
 
 ```bash
 mkdir -p yolo-label-studio-project/shared-data/{new_images,yolo_predictions,corrected_data,yolo_training}
@@ -45,200 +45,191 @@ mkdir -p yolo-label-studio-project/label-studio-data
 mkdir -p yolo-label-studio-project/yolo-service
 ```
 
-### 2. 复制配置文件
+### 2. Copy Configuration Files
 
-将提供的代码复制到以下文件中：
-- `docker-compose.yml`：容器配置
-- `.env`：环境变量
-- `yolo-service/Dockerfile`：YOLO服务的Dockerfile
-- `yolo-service/requirements.txt`：Python依赖
-- `yolo-service/active_learning.py`：主动学习代码
+Copy the provided code into:
+- `docker-compose.yml`: Container configurations
+- `.env`: Environment variables
+- `yolo-service/Dockerfile`: YOLO service Dockerfile
+- `yolo-service/requirements.txt`: Python dependencies
+- `yolo-service/active_learning.py`: Active learning code
 
-### 3. 配置环境变量
+### 3. Configure Environment Variables
 
-编辑`.env`文件，设置以下变量：
-- `LABEL_STUDIO_API_KEY`：Label Studio API密钥
-- `PROJECT_ID`：Label Studio项目ID（如果不存在会自动创建）
-- `CUDA_VISIBLE_DEVICES`：GPU设备ID（如果使用GPU）
-如何获得Label Studio API:
-运行 docker-compose up -d label-studio
-在浏览器中访问Label Studio界面：http://localhost:8080
-使用默认凭据登录：
+Edit `.env` to set:
+- `LABEL_STUDIO_API_KEY`: Label Studio API key
+- `PROJECT_ID`: Label Studio project ID (auto-created if not exists)
+- `CUDA_VISIBLE_DEVICES`: GPU device ID (for GPU usage)
 
-用户名：admin@example.com
-密码：admin
+**How to Obtain Label Studio API Key:**
+1. Run `docker-compose up -d label-studio`
+2. Access Label Studio at `http://localhost:8080`
+3. Login with default credentials:
+   - Email: `admin@example.com`
+   - Password: `admin`
+4. Click user icon → "Account & Settings"
+5. Under "Access Token" section, create/copy API key
+6. Update `.env`:
+   ```bash
+   LABEL_STUDIO_API_KEY=your_copied_key
+   ```
+7. Restart containers:
+   ```bash
+   docker-compose restart
+   ```
 
-
-登录后，点击右上角的用户图标（通常显示您的用户名或头像）
-在下拉菜单中选择"Account & Settings"（账户与设置）
-在账户设置页面，查找"Access Token"或"API Keys"部分
-您可能会看到一个现有的API密钥，或者需要点击"Create New Token"/"Create API Key"按钮来生成一个新的密钥
-生成密钥后，将其复制并保存到您的项目的.env文件中，更新LABEL_STUDIO_API_KEY变量：
-LABEL_STUDIO_API_KEY=您复制的密钥
-
-保存.env文件后，需要重启容器以使更改生效：
-bashdocker-compose restart
-
-### 4. 启动系统
+### 4. Start the System
 
 ```bash
 cd yolo-label-studio-project
 docker-compose up -d
 ```
 
-首次启动时，容器会下载并构建，这可能需要一些时间。
+Initial startup may take time for downloading and building containers.
 
-### 5. 设置Label Studio
+### 5. Configure Label Studio
 
-1. 打开浏览器访问`http://localhost:8080`
-2. 使用默认凭据登录：`admin@example.com` / `admin`
-3. 创建一个新项目或使用YOLO服务自动创建的项目
-4. 获取API密钥：
-   - 点击右上角的用户图标
-   - 选择"Account & Settings"
-   - 在"Access Token"部分获取或创建API密钥
-5. 更新`.env`文件中的`LABEL_STUDIO_API_KEY`和`PROJECT_ID`
-6. 重启容器：`docker-compose restart`
+1. Access `http://localhost:8080`
+2. Login with `admin@example.com` / `admin`
+3. Create new project or use auto-created project
+4. Obtain API key as described above
+5. Update `.env` with `LABEL_STUDIO_API_KEY` and `PROJECT_ID`
+6. Restart containers: `docker-compose restart`
 
-## 使用流程
+## Workflow
 
-### 1. 添加图像数据
+### 1. Add Image Data
 
-将需要标注的图像文件放入`shared-data/new_images/`目录：
+Place images in `shared-data/new_images/`:
 
 ```bash
 cp /path/to/your/images/*.jpg yolo-label-studio-project/shared-data/new_images/
 ```
 
-### 2. 自动处理
+### 2. Automatic Processing
 
-YOLO服务容器会：
-1. 自动检测新图像
-2. 使用YOLO模型进行预测
-3. 将预测结果上传到Label Studio
-4. 监控Label Studio中的任务完成情况
+YOLO service will:
+1. Detect new images
+2. Generate predictions using YOLO
+3. Upload pre-annotations to Label Studio
+4. Monitor task completion
 
-### 3. 在Label Studio中标注
+### 3. Label in Label Studio
 
-1. 登录Label Studio
-2. 进入项目
-3. 查看带有YOLO预标注的任务
-4. 修正预标注并提交
+1. Login to Label Studio
+2. Navigate to project
+3. Review YOLO pre-annotations
+4. Correct annotations and submit
 
-### 4. 自动更新模型
+### 4. Automatic Model Updates
 
-一旦所有任务都被标注完成，YOLO服务会：
-1. 导出修正后的标注数据到`shared-data/corrected_data/`目录
-2. 使用修正后的数据微调YOLO模型
-3. 保存更新后的模型到`shared-data/yolo_training/active_learning_run/weights/`目录
-4. 将更新后的模型用于下一轮预测
+When all tasks are labeled, YOLO service will:
+1. Export corrected data to `shared-data/corrected_data/`
+2. Fine-tune YOLO model
+3. Save updated model to `shared-data/yolo_training/active_learning_run/weights/`
+4. Use updated model for next predictions
 
-系统会自动循环这个过程，实现主动学习：
-- 模型预测 → 人工修正 → 模型更新 → 模型预测...
+The system automatically cycles through:
+- Model prediction → Human correction → Model update → Prediction...
 
-## 容器间通信原理
+## Inter-container Communication
 
-两个容器的通信基于以下机制：
+1. **Network Communication**:
+   - Dedicated `active-learning-network` created by Docker Compose
+   - Label Studio hostname: `label-studio`
+   - YOLO service accesses Label Studio API via `http://label-studio:8080`
 
-1. **网络通信**：
-   - Docker Compose创建了名为`active-learning-network`的网络
-   - Label Studio容器的主机名被设置为`label-studio`
-   - YOLO服务通过`http://label-studio:8080`访问Label Studio API
+2. **Data Sharing**:
+   - `shared-data` mounted to both containers
+   - YOLO predictions/training data stored in shared directory
+   - File system-based data exchange
 
-2. **数据共享**：
-   - `shared-data`目录被挂载到两个容器中
-   - YOLO服务将预测结果和训练数据保存到共享目录
-   - 两个容器通过文件系统共享数据
+## Monitoring & Logs
 
-## 监控和日志
-
-查看容器日志：
+View container logs:
 
 ```bash
-# 查看Label Studio日志
+# Label Studio logs
 docker-compose logs -f label-studio
 
-# 查看YOLO服务日志
+# YOLO service logs
 docker-compose logs -f yolo-service
 ```
 
-## 自定义模型和标签
+## Customization
 
-要自定义YOLO模型和标签：
+### Custom Models & Labels
 
-1. **修改YOLO模型**：
-   - 将预训练的YOLO模型文件放在`yolo-service`目录中
-   - 修改`active_learning.py`中的`YOLO_MODEL_PATH`变量
+1. **Modify YOLO Model**:
+   - Place custom model in `yolo-service`
+   - Update `YOLO_MODEL_PATH` in `active_learning.py`
 
-2. **自定义Label Studio标签**：
-   - 在Label Studio界面中创建项目时自定义标签配置
-   - 或修改`active_learning.py`中的`label_config`参数
+2. **Custom Labels**:
+   - Configure labels in Label Studio UI
+   - Modify `label_config` in `active_learning.py`
 
-## 疑难解答
+## Troubleshooting
 
-### 常见问题
+### Common Issues
 
-1. **容器无法启动**：
-   - 检查Docker和Docker Compose是否正确安装
-   - 检查是否有足够的磁盘空间和内存
-   - 查看日志确定具体错误：`docker-compose logs`
+1. **Container Startup Failure**:
+   - Verify Docker/Docker Compose installation
+   - Check disk space and memory
+   - Review logs: `docker-compose logs`
 
-2. **YOLO服务无法连接到Label Studio**：
-   - 确保两个容器在同一个网络中
-   - 检查Label Studio是否成功启动
-   - 验证API密钥是否正确
+2. **Connection Issues**:
+   - Ensure containers share the same network
+   - Confirm Label Studio is running
+   - Validate API key
 
-3. **GPU不可用**：
-   - 确保NVIDIA驱动和容器工具包已正确安装
-   - 检查GPU是否被其他进程占用
-   - 尝试在`.env`文件中设置`CUDA_VISIBLE_DEVICES=-1`切换到CPU模式
+3. **GPU Unavailable**:
+   - Verify NVIDIA drivers and toolkit
+   - Check GPU usage by other processes
+   - Set `CUDA_VISIBLE_DEVICES=-1` in `.env` for CPU mode
 
-4. **数据导入/导出问题**：
-   - 检查共享目录的权限
-   - 确保目录路径正确
-   - 检查磁盘空间是否充足
+4. **Data Import/Export Issues**:
+   - Check shared directory permissions
+   - Verify directory paths
+   - Ensure sufficient disk space
 
-## 扩展功能
+## Extensions
 
-系统可以根据需要进行以下扩展：
+Enhance the system with:
 
-1. **支持更多格式的标注数据**：
-   - 修改导入/导出代码以支持其他标注格式
+1. **Additional Annotation Formats**:
+   - Modify import/export code
 
-2. **调整主动学习策略**：
-   - 实现不确定性采样或其他主动学习策略
-   - 修改`active_learning.py`中的相关代码
+2. **Advanced Active Learning Strategies**:
+   - Implement uncertainty sampling in `active_learning.py`
 
-3. **添加Web界面**：
-   - 创建额外的容器提供监控和控制界面
+3. **Web Interface**:
+   - Add monitoring/control UI container
 
-4. **与CI/CD集成**：
-   - 添加自动测试和部署脚本
+4. **CI/CD Integration**:
+   - Add automated testing/deployment
 
-5. **多模型支持**：
-   - 扩展代码以支持多个不同的YOLO模型
+5. **Multi-model Support**:
+   - Extend code to support multiple YOLO models
 
-## 维护和更新
+## Maintenance & Updates
 
-要更新系统组件：
+Update components:
 
-1. **更新Label Studio**：
+1. **Update Label Studio**:
    ```bash
    docker-compose pull label-studio
    docker-compose up -d
    ```
 
-2. **更新YOLO服务**：
-   - 修改代码或依赖
-   - 重新构建容器：
+2. **Update YOLO Service**:
    ```bash
    docker-compose build yolo-service
    docker-compose up -d
    ```
 
-## 安全注意事项
+## Security Considerations
 
-1. 不要在公共网络上暴露Label Studio接口
-2. 定期更新容器和依赖
-3. 不要在环境变量中存储敏感凭据
-4. 为共享卷设置适当的权限
+1. Do not expose Label Studio publicly
+2. Regularly update containers
+3. Avoid storing sensitive credentials in `.env`
+4. Set appropriate permissions for shared volumes

@@ -1,31 +1,41 @@
-FROM pytorch/pytorch:2.0.0-cuda11.7-cudnn8-runtime
+FROM python:3.9-slim
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    git \
     libgl1-mesa-glx \
     libglib2.0-0 \
-    python3-pip \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制需求文件并安装Python依赖
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
-COPY . .
+# Install YOLOv8 via ultralytics
+RUN pip install --no-cache-dir ultralytics
 
-# 创建必要的目录
-RUN mkdir -p /app/new_images /app/yolo_predictions /app/corrected_data /app/yolo_training
+# Install Label Studio SDK
+RUN pip install --no-cache-dir label-studio-sdk
 
-# 设置环境变量
-ENV PYTHONUNBUFFERED=1
+# Download a pre-trained YOLOv8 model
+RUN wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt
 
-# 下载预训练的YOLOv8模型
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+# Create directory structure
+RUN mkdir -p /app/shared-data/new_images \
+    /app/shared-data/yolo_predictions \
+    /app/shared-data/corrected_data \
+    /app/shared-data/yolo_training
 
-# 运行脚本
+# Copy the application code
+COPY . /app/
+
+# Set environment variables
+ENV LABEL_STUDIO_URL="http://label-studio:8080"
+ENV LABEL_STUDIO_API_KEY="your_api_key_here"
+ENV PROJECT_ID=1
+
+# Command to run the application
 CMD ["python", "active_learning.py"]
