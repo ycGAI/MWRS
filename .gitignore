@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Data directories
+shared-data/
+label-studio-data/
+yolo-service/shared-data/
+*/new_images/
+*/yolo_predictions/
+*/corrected_data/
+*/yolo_training/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Model files
+*.pt
+*.pth
+*.weights
+*.onnx
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+logs/
+tensorboard/
+
+# Media files that might be large
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.mov
+*.avi
+
+# Exclude specific directories but keep their structure
+!shared-data/.gitkeep
+!label-studio-data/.gitkeep
+!*/new_images/.gitkeep
+!*/yolo_predictions/.gitkeep
+!*/corrected_data/.gitkeep
+!*/yolo_training/.gitkeep
+
+*.html
