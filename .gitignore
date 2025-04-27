@@ -90,3 +90,4 @@ tensorboard/
 !*/yolo_training/.gitkeep
 
 *.html
+*.zip

@@ -11,6 +11,7 @@ from tqdm import tqdm
 import glob
 from pathlib import Path
 import time
+import shutil
 
 from ultralytics import YOLO
 
@@ -21,24 +22,55 @@ from label_studio_sdk import Client
 # Get configuration from environment variables
 LABEL_STUDIO_URL = os.environ.get("LABEL_STUDIO_URL", "http://label-studio:8080")
 API_KEY = os.environ.get("LABEL_STUDIO_API_KEY", "your_api_key_here")
-# 确保环境变量正确处理
+# 环境变量处理增强
 try:
     PROJECT_ID = int(os.environ.get("PROJECT_ID", 1))
     print(f"Successfully initialized PROJECT_ID={PROJECT_ID}")
 except Exception as e:
-    print(f"Error getting PROJECT_ID from environment, using default: {e}")
+    print(f"Error getting PROJECT_ID from environment, using default value 1")
     PROJECT_ID = 1
 
-YOLO_MODEL_PATH = "yolov8n.pt"  # Path to pretrained YOLO model
+# Path to pretrained YOLO model - can use YOLOv8 pretrained model
+YOLO_MODEL_PATH = "yolov8n.pt"  
 CONFIDENCE_THRESHOLD = 0.25  # Detection confidence threshold
 NEW_DATA_DIR = "/app/shared-data/new_images"  # New data directory
 OUTPUT_DIR = "/app/shared-data/yolo_predictions"  # Directory to save YOLO prediction results
 CORRECTED_DATA_DIR = "/app/shared-data/corrected_data"  # Directory for corrected data
+KITTI_DATA_DIR = "/app/shared-data/kitti_data"  # Directory for KITTI data
 
 # Ensure directories exist
 os.makedirs(NEW_DATA_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CORRECTED_DATA_DIR, exist_ok=True)
+os.makedirs(KITTI_DATA_DIR, exist_ok=True)
+os.makedirs(f"{KITTI_DATA_DIR}/images", exist_ok=True)
+os.makedirs(f"{KITTI_DATA_DIR}/labels", exist_ok=True)
+
+# KITTI class names - update based on the specific KITTI dataset you're using
+KITTI_CLASSES = {
+    0: "Car",
+    1: "Van",
+    2: "Truck",
+    3: "Pedestrian",
+    4: "Person_sitting",
+    5: "Cyclist",
+    6: "Tram",
+    7: "Misc",
+    8: "DontCare"
+}
+
+# Map KITTI classes to COCO classes for YOLOv8 pretrained model
+KITTI_TO_COCO = {
+    "Car": 2,         # car maps to car in COCO
+    "Van": 2,         # van maps to car in COCO
+    "Truck": 7,       # truck maps to truck in COCO
+    "Pedestrian": 0,  # pedestrian maps to person in COCO
+    "Person_sitting": 0,  # person_sitting maps to person in COCO
+    "Cyclist": 1,     # cyclist maps to bicycle in COCO
+    "Tram": 6,        # tram maps to train in COCO
+    "Misc": 0,        # misc gets default mapping
+    "DontCare": 0     # DontCare gets default mapping
+}
 
 class YOLOActiveLearning:
     def __init__(self):
@@ -56,16 +88,21 @@ class YOLOActiveLearning:
             print(f"Unable to get project {PROJECT_ID}, error: {e}")
             print("Trying to create a new project...")
             self.project = self.ls_client.create_project(
-                title="YOLO Active Learning",
-                description="Project using YOLO for active learning",
+                title="KITTI Object Detection with YOLO",
+                description="Project using YOLO for active learning on KITTI dataset",
                 label_config="""
                 <View>
                   <Image name="image" value="$image"/>
                   <RectangleLabels name="label" toName="image">
-                    <Label value="person" background="#FF0000"/>
-                    <Label value="car" background="#00FF00"/>
-                    <Label value="dog" background="#0000FF"/>
-                    <!-- Add more labels as needed -->
+                    <Label value="Car" background="#FF0000"/>
+                    <Label value="Van" background="#00FF00"/>
+                    <Label value="Truck" background="#0000FF"/>
+                    <Label value="Pedestrian" background="#FFFF00"/>
+                    <Label value="Person_sitting" background="#FF00FF"/>
+                    <Label value="Cyclist" background="#00FFFF"/>
+                    <Label value="Tram" background="#FFA500"/>
+                    <Label value="Misc" background="#808080"/>
+                    <Label value="DontCare" background="#A0A0A0"/>
                   </RectangleLabels>
                 </View>
                 """
@@ -101,26 +138,105 @@ class YOLOActiveLearning:
         """Create Label Studio class to YOLO class mapping"""
         # Get labels from Label Studio
         ls_labels = self.project.params['label_config']
-        # Parse XML to get labels (simplified version, might need adjustment based on actual label configuration)
+        # Parse XML to get labels (simplified version)
         import re
         self.ls_labels = re.findall(r'value="([^"]+)"', ls_labels)
         
         # Create Label Studio label to YOLO class mapping
         self.ls_to_yolo = {}
-        for idx, label in enumerate(self.ls_labels):
-            if label in self.class_map.values():
-                # Find corresponding class ID in YOLO
-                for yolo_id, yolo_label in self.class_map.items():
-                    if yolo_label == label:
-                        self.ls_to_yolo[label] = yolo_id
-            else:
-                # If Label Studio has classes not in YOLO, we can extend YOLO classes
-                # Here we assume Label Studio classes match YOLO classes
-                self.ls_to_yolo[label] = idx
+        for label in self.ls_labels:
+            if label in KITTI_CLASSES.values():
+                # Map KITTI class to COCO class ID in YOLO
+                if label in KITTI_TO_COCO:
+                    self.ls_to_yolo[label] = KITTI_TO_COCO[label]
+                else:
+                    # Default mapping if not found
+                    self.ls_to_yolo[label] = 0
         
         # Create YOLO class to Label Studio label mapping
-        self.yolo_to_ls = {v: k for k, v in self.ls_to_yolo.items()}
+        self.yolo_to_ls = {}
+        for kitti_class, yolo_id in KITTI_TO_COCO.items():
+            if yolo_id in self.class_map:
+                self.yolo_to_ls[yolo_id] = kitti_class
+            
+        print("Class mappings created:")
+        print(f"Label Studio to YOLO: {self.ls_to_yolo}")
+        print(f"YOLO to Label Studio: {self.yolo_to_ls}")
+    
+    def process_kitti_dataset(self, kitti_dir):
+        """Process KITTI dataset and prepare it for use"""
+        images_dir = os.path.join(kitti_dir, "image_2")
+        labels_dir = os.path.join(kitti_dir, "label_2")
         
+        if not os.path.exists(images_dir) or not os.path.exists(labels_dir):
+            print(f"KITTI directory structure not found at {kitti_dir}")
+            print("Expected: {kitti_dir}/image_2 and {kitti_dir}/label_2")
+            return False
+        
+        # Process each image and label file
+        image_files = glob.glob(f"{images_dir}/*.png")
+        
+        for img_path in tqdm(image_files, desc="Processing KITTI dataset"):
+            img_name = os.path.basename(img_path)
+            base_name = os.path.splitext(img_name)[0]
+            label_path = os.path.join(labels_dir, f"{base_name}.txt")
+            
+            if os.path.exists(label_path):
+                # Copy image to new_images directory for processing
+                shutil.copy(img_path, os.path.join(NEW_DATA_DIR, img_name))
+                
+                # Also save a copy in our KITTI directory
+                shutil.copy(img_path, os.path.join(KITTI_DATA_DIR, "images", img_name))
+                
+                # Convert KITTI label to YOLO format
+                self.convert_kitti_to_yolo(label_path, img_path, os.path.join(KITTI_DATA_DIR, "labels", f"{base_name}.txt"))
+        
+        print(f"Processed {len(image_files)} KITTI images and labels")
+        return True
+    
+    def convert_kitti_to_yolo(self, kitti_label_path, img_path, output_path):
+        """Convert KITTI label format to YOLO format"""
+        # Read image to get dimensions
+        img = Image.open(img_path)
+        img_width, img_height = img.size
+        
+        with open(kitti_label_path, 'r') as f:
+            kitti_labels = f.readlines()
+        
+        with open(output_path, 'w') as outfile:
+            for line in kitti_labels:
+                parts = line.strip().split()
+                if len(parts) < 15:  # KITTI format has at least 15 parts
+                    continue
+                
+                kitti_class = parts[0]
+                
+                # Skip DontCare or classes we don't want to track
+                if kitti_class == 'DontCare':
+                    continue
+                    
+                # Map KITTI class to YOLO class
+                if kitti_class in KITTI_TO_COCO:
+                    yolo_class = KITTI_TO_COCO[kitti_class]
+                else:
+                    # Skip classes we don't have a mapping for
+                    continue
+                
+                # KITTI format: [left, top, right, bottom] in pixels
+                left = float(parts[4])
+                top = float(parts[5])
+                right = float(parts[6])
+                bottom = float(parts[7])
+                
+                # Convert to YOLO format: [x_center, y_center, width, height] normalized
+                x_center = ((left + right) / 2) / img_width
+                y_center = ((top + bottom) / 2) / img_height
+                width = (right - left) / img_width
+                height = (bottom - top) / img_height
+                
+                # Write YOLO format
+                outfile.write(f"{yolo_class} {x_center} {y_center} {width} {height}\n")
+    
     def predict_batch(self, image_paths):
         """Use YOLO model to predict on a batch of images"""
         results = []
@@ -166,11 +282,12 @@ class YOLOActiveLearning:
                     class_id = int(cls[i])
                     confidence = float(conf[i])
                     
-                    # Convert class ID to Label Studio label
+                    # Map YOLO class to KITTI class for Label Studio
                     if class_id in self.yolo_to_ls:
                         label = self.yolo_to_ls[class_id]
                     else:
-                        label = f"class_{class_id}"
+                        # Skip classes we can't map
+                        continue
                     
                     # Label Studio uses relative coordinates (0-100%)
                     width = (x2 - x1) / img_width * 100
@@ -295,7 +412,7 @@ class YOLOActiveLearning:
             "path": os.path.abspath(CORRECTED_DATA_DIR),
             "train": "images",
             "val": "images",  # Simplified version, using the same images for validation
-            "names": self.class_map
+            "names": {v: k for k, v in KITTI_TO_COCO.items()}  # Map back from COCO IDs to KITTI classes
         }
         
         with open(f"{CORRECTED_DATA_DIR}/dataset.yaml", "w") as f:
@@ -318,15 +435,15 @@ class YOLOActiveLearning:
             device=0 if torch.cuda.is_available() else 'cpu',
             save=True,
             project='/app/shared-data/yolo_training',
-            name='active_learning_run'
+            name='kitti_active_learning_run'
         )
         
         print("Model fine-tuning completed!")
         
         # Update current model
-        self.model = YOLO('/app/shared-data/yolo_training/active_learning_run/weights/best.pt')
+        self.model = YOLO('/app/shared-data/yolo_training/kitti_active_learning_run/weights/best.pt')
         
-        return '/app/shared-data/yolo_training/active_learning_run/weights/best.pt'
+        return '/app/shared-data/yolo_training/kitti_active_learning_run/weights/best.pt'
     
     def monitor_label_studio(self, check_interval=60):
         """Monitor task completion status in Label Studio"""
@@ -388,10 +505,16 @@ class YOLOActiveLearning:
 
 # Main program
 if __name__ == "__main__":
-    print("Starting YOLO active learning system...")
+    print("Starting YOLO active learning system for KITTI dataset...")
     
     # Initialize
     active_learner = YOLOActiveLearning()
+    
+    # Check if KITTI dataset has been provided in the shared directory
+    kitti_dir = "/app/shared-data/kitti"
+    if os.path.exists(kitti_dir):
+        print(f"Found KITTI dataset directory at {kitti_dir}, processing...")
+        active_learner.process_kitti_dataset(kitti_dir)
     
     # Periodically check for new images and process them
     while True:

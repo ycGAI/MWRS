@@ -36,6 +36,8 @@ services:
     volumes:
       - ./yolo-service:/app
       - ./shared-data:/app/shared-data
+    env_file:
+      - .env
     environment:
       - LABEL_STUDIO_URL=http://label-studio:8080 # 使用容器名称访问
       - LABEL_STUDIO_USERNAME=admin@example.com

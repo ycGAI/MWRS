@@ -1,5 +1,0 @@
-
-LABEL_STUDIO_API_KEY=your_api_key_here
-PROJECT_ID=1
-# if no gpu set -1
-CUDA_VISIBLE_DEVICES=0
