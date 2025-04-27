@@ -4,7 +4,7 @@ This document provides detailed instructions on setting up and using a Docker-ba
 
 ## Temp script
 ```bash
-setup_kitti.sh 
+./setup_kitti.sh 
 ```
 it is a demo, which just use kitti-dataset to verify the workflow
 There is a problem with environment variant in **project ID**.If you find out, please fix it.
