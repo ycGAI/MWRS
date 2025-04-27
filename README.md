@@ -1,5 +1,11 @@
 # YOLO and Label Studio Active Learning System Setup Guide
 
+##Temp script
+```bash
+setup_kitti.sh 
+```
+it is a demo, which just use kitti-dataset to verify the workflow
+
 This document provides detailed instructions on setting up and using a Docker-based active learning system integrating YOLO and Label Studio.
 
 ## System Architecture
