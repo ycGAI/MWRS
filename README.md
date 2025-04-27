@@ -1,6 +1,6 @@
 # YOLO and Label Studio Active Learning System Setup Guide
 
-##Temp script
+## Temp script
 ```bash
 setup_kitti.sh 
 ```
