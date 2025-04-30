@@ -42,6 +42,7 @@ os.makedirs(CORRECTED_DATA_DIR, exist_ok=True)
 
 class YOLOActiveLearning:
     def __init__(self):
+        global PROJECT_ID        
         # Wait for Label Studio service to start
         self.wait_for_label_studio()
         

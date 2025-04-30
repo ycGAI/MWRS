@@ -42,8 +42,6 @@ services:
       - LABEL_STUDIO_URL=http://label-studio:8080 
       - LABEL_STUDIO_USERNAME=admin@example.com
       - LABEL_STUDIO_PASSWORD=admin
-      - LABEL_STUDIO_API_KEY=${LABEL_STUDIO_API_KEY}
-      - PROJECT_ID=1
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
     depends_on:
       - label-studio

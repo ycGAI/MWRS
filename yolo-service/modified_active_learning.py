@@ -78,7 +78,11 @@ class YOLOActiveLearning:
         self.wait_for_label_studio()
         
         self.model = YOLO(YOLO_MODEL_PATH)
-        self.ls_client = Client(url=LABEL_STUDIO_URL, api_key=API_KEY)
+        # 使用Bearer前缀 (适用于访问令牌)
+        self.ls_client = Client(
+            url=LABEL_STUDIO_URL,
+            headers={"Authorization": f"Bearer {API_KEY}"}
+        )
         
         # Ensure the project exists
         try:

@@ -25,8 +25,10 @@ chmod -R 755 label-studio-data 2>/dev/null || echo -e "${YELLOW}Some directory p
 chmod -R 755 yolo-service 2>/dev/null || echo -e "${YELLOW}Some directory permissions cannot be modified, but this does not affect functionality${NC}"
 
 # Fix PROJECT_ID issue in modified_active_learning.py
-echo -e "${YELLOW}Fixing environment variable handling issue...${NC}"
-if grep -q "PROJECT_ID = int(os.environ.get(\"PROJECT_ID\"" yolo-service/modified_active_learning.py; then
+echo -e "${YELLOW}Checking environment variable handling in modified_active_learning.py...${NC}"
+if grep -q "try:" yolo-service/modified_active_learning.py && grep -q "PROJECT_ID = int(os.environ.get(\"PROJECT_ID\"" yolo-service/modified_active_learning.py; then
+    echo -e "${GREEN}Environment variable handling already fixed in modified_active_learning.py${NC}"
+elif grep -q "PROJECT_ID = int(os.environ.get(\"PROJECT_ID\"" yolo-service/modified_active_learning.py; then
     # Create backup
     cp yolo-service/modified_active_learning.py yolo-service/modified_active_learning.py.bak
     
@@ -35,7 +37,7 @@ if grep -q "PROJECT_ID = int(os.environ.get(\"PROJECT_ID\"" yolo-service/modifie
     
     echo -e "${GREEN}Fixed environment variable handling in modified_active_learning.py${NC}"
 else
-    echo -e "${YELLOW}modified_active_learning.py is already updated, no fix needed${NC}"
+    echo -e "${YELLOW}PROJECT_ID handling already modified or using a different pattern${NC}"
 fi
 
 # Check for KITTI dataset
